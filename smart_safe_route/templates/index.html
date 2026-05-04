@@ -1,0 +1,1595 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SafeRoute India — AI Safety Navigation</title>
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Epilogue:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+    <style>
+      /* ── TOKENS ─────────────────────────────────────────────────────── */
+      :root {
+        --white: #ffffff;
+        --off-white: #f7f8fa;
+        --surface: #ffffff;
+        --border: #e4e7ed;
+        --border-strong: #cdd2db;
+        --text: #1a1d23;
+        --text-2: #4b5563;
+        --text-3: #8b93a1;
+        --safe: #16a34a;
+        --safe-bg: #f0fdf4;
+        --safe-border: #86efac;
+        --moderate: #d97706;
+        --moderate-bg: #fffbeb;
+        --moderate-border: #fcd34d;
+        --danger: #dc2626;
+        --danger-bg: #fef2f2;
+        --danger-border: #fca5a5;
+        --india: #ff6b35; /* saffron accent */
+        --india-2: #1a56a0; /* tricolour blue */
+        --radius-sm: 8px;
+        --radius: 12px;
+        --radius-lg: 18px;
+        --shadow-sm:
+          0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+        --shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+        --shadow-lg:
+          0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
+        --font-display: "Instrument Serif", serif;
+        --font-body: "Epilogue", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: var(--off-white);
+        color: var(--text);
+        font-family: var(--font-body);
+        font-size: 15px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* ── NAV ──────────────────────────────────────────────────────────── */
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 900;
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border);
+        padding: 0 24px;
+        height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .logo {
+        font-family: var(--font-display);
+        font-size: 1.35rem;
+        color: var(--text);
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .logo-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, var(--india), #e63946);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 0.85rem;
+      }
+      .status-pill {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--safe-bg);
+        border: 1px solid var(--safe-border);
+        color: var(--safe);
+        font-size: 0.72rem;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 20px;
+        letter-spacing: 0.3px;
+      }
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--safe);
+        animation: blink 2s ease infinite;
+      }
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+
+      /* ── LAYOUT ──────────────────────────────────────────────────────── */
+      .app-layout {
+        display: flex;
+        height: calc(100vh - 56px);
+      }
+
+      /* ── SIDEBAR ──────────────────────────────────────────────────────── */
+      .sidebar {
+        width: 400px;
+        min-width: 400px;
+        background: var(--white);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .sidebar-scroll {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+      }
+      .sidebar-scroll::-webkit-scrollbar {
+        width: 4px;
+      }
+      .sidebar-scroll::-webkit-scrollbar-thumb {
+        background: var(--border-strong);
+        border-radius: 2px;
+      }
+
+      /* ── SEARCH PANEL ────────────────────────────────────────────────── */
+      .search-panel {
+        margin-bottom: 20px;
+      }
+      .panel-title {
+        font-family: var(--font-display);
+        font-size: 1.55rem;
+        line-height: 1.2;
+        margin-bottom: 4px;
+        color: var(--text);
+      }
+      .panel-sub {
+        font-size: 0.82rem;
+        color: var(--text-3);
+        margin-bottom: 16px;
+      }
+
+      /* location input rows */
+      .loc-inputs {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        position: relative;
+      }
+      .loc-connector {
+        position: absolute;
+        left: 18px;
+        top: 44px;
+        bottom: 44px;
+        width: 2px;
+        background: repeating-linear-gradient(
+          to bottom,
+          var(--border-strong) 0,
+          var(--border-strong) 4px,
+          transparent 4px,
+          transparent 8px
+        );
+        z-index: 1;
+      }
+      .loc-row {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        position: relative;
+      }
+      .loc-dot {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        z-index: 2;
+        flex-shrink: 0;
+      }
+      .loc-dot.origin {
+        background: var(--india-2);
+        color: #fff;
+      }
+      .loc-dot.dest {
+        background: var(--india);
+        color: #fff;
+      }
+
+      .loc-input-wrap {
+        flex: 1;
+        position: relative;
+      }
+      .loc-input {
+        width: 100%;
+        border: 1.5px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 10px 36px 10px 12px;
+        font-family: var(--font-body);
+        font-size: 0.9rem;
+        color: var(--text);
+        background: var(--off-white);
+        transition:
+          border 0.15s,
+          box-shadow 0.15s;
+        outline: none;
+      }
+      .loc-input:focus {
+        border-color: var(--india-2);
+        box-shadow: 0 0 0 3px rgba(26, 86, 160, 0.1);
+        background: #fff;
+      }
+      .loc-input::placeholder {
+        color: var(--text-3);
+      }
+      .clear-btn {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--text-3);
+        font-size: 0.75rem;
+        padding: 2px;
+        display: none;
+      }
+      .clear-btn.visible {
+        display: block;
+      }
+
+      /* autocomplete dropdown */
+      .autocomplete-dropdown {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        box-shadow: var(--shadow-lg);
+        z-index: 9999;
+        max-height: 220px;
+        overflow-y: auto;
+        display: none;
+      }
+      .autocomplete-dropdown.open {
+        display: block;
+      }
+      .autocomplete-item {
+        padding: 9px 12px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.88rem;
+        border-bottom: 1px solid var(--border);
+        transition: background 0.1s;
+      }
+      .autocomplete-item:last-child {
+        border-bottom: none;
+      }
+      .autocomplete-item:hover,
+      .autocomplete-item.active {
+        background: var(--off-white);
+      }
+      .ac-icon {
+        color: var(--india);
+        font-size: 0.75rem;
+        width: 16px;
+        text-align: center;
+        flex-shrink: 0;
+      }
+      .ac-name {
+        font-weight: 500;
+        color: var(--text);
+      }
+      .ac-city {
+        font-size: 0.75rem;
+        color: var(--text-3);
+        margin-left: auto;
+      }
+
+      /* time toggle */
+      .time-toggle {
+        display: flex;
+        gap: 8px;
+        margin: 12px 0;
+      }
+      .time-btn {
+        flex: 1;
+        padding: 8px 0;
+        border-radius: var(--radius-sm);
+        border: 1.5px solid var(--border);
+        background: var(--off-white);
+        font-family: var(--font-body);
+        font-size: 0.83rem;
+        font-weight: 500;
+        color: var(--text-2);
+        cursor: pointer;
+        transition: all 0.15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+      .time-btn.active {
+        background: #fff;
+        border-color: var(--india-2);
+        color: var(--india-2);
+        box-shadow: var(--shadow-sm);
+      }
+
+      /* CTA */
+      .btn-route {
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: var(--radius-sm);
+        background: var(--india-2);
+        color: #fff;
+        font-family: var(--font-body);
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        letter-spacing: 0.2px;
+      }
+      .btn-route:hover {
+        background: #1548a0;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 16px rgba(26, 86, 160, 0.3);
+      }
+      .btn-route:active {
+        transform: none;
+      }
+      .btn-route:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      /* ── DIVIDER ──────────────────────────────────────────────────────── */
+      .divider {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 16px 0;
+      }
+
+      /* ── RESULTS ──────────────────────────────────────────────────────── */
+      #results-panel {
+        display: none;
+      }
+      #results-panel.visible {
+        display: block;
+        animation: fadeIn 0.35s ease;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      /* score header */
+      .score-header {
+        border-radius: var(--radius);
+        padding: 16px;
+        margin-bottom: 14px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .score-header.safe {
+        background: var(--safe-bg);
+        border: 1px solid var(--safe-border);
+      }
+      .score-header.moderate {
+        background: var(--moderate-bg);
+        border: 1px solid var(--moderate-border);
+      }
+      .score-header.unsafe {
+        background: var(--danger-bg);
+        border: 1px solid var(--danger-border);
+      }
+
+      .score-circle {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-family: var(--font-display);
+      }
+      .score-circle.safe {
+        background: var(--safe);
+        color: #fff;
+      }
+      .score-circle.moderate {
+        background: var(--moderate);
+        color: #fff;
+      }
+      .score-circle.unsafe {
+        background: var(--danger);
+        color: #fff;
+      }
+      .score-num {
+        font-size: 1.3rem;
+        line-height: 1;
+      }
+      .score-pct {
+        font-size: 0.65rem;
+        opacity: 0.85;
+      }
+
+      .score-info {
+      }
+      .score-label {
+        font-weight: 600;
+        font-size: 0.95rem;
+        margin-bottom: 2px;
+      }
+      .score-sub {
+        font-size: 0.78rem;
+        color: var(--text-2);
+      }
+
+      /* breakdown bars */
+      .breakdown-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .breakdown-cell {
+        background: var(--off-white);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+      }
+      .bc-label {
+        font-size: 0.72rem;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+      }
+      .bc-bar {
+        height: 5px;
+        background: var(--border);
+        border-radius: 3px;
+        overflow: hidden;
+        margin-bottom: 4px;
+      }
+      .bc-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 1s ease;
+      }
+      .bc-val {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      /* section label */
+      .sec-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: var(--text-3);
+        margin-bottom: 8px;
+      }
+
+      /* waypoint list */
+      .wp-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 14px;
+        max-height: 260px;
+        overflow-y: auto;
+      }
+      .wp-list::-webkit-scrollbar {
+        width: 4px;
+      }
+      .wp-list::-webkit-scrollbar-thumb {
+        background: var(--border-strong);
+        border-radius: 2px;
+      }
+      .wp-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 11px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        background: #fff;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
+      }
+      .wp-item:hover {
+        border-color: var(--india-2);
+        box-shadow: var(--shadow-sm);
+      }
+      .wp-item.highlighted {
+        border-color: var(--india-2);
+        background: #f0f5ff;
+      }
+      .wp-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .wp-dot.s {
+        background: var(--safe);
+      }
+      .wp-dot.m {
+        background: var(--moderate);
+      }
+      .wp-dot.u {
+        background: var(--danger);
+      }
+      .wp-text {
+        flex: 1;
+        min-width: 0;
+      }
+      .wp-name {
+        font-size: 0.85rem;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .wp-city {
+        font-size: 0.72rem;
+        color: var(--text-3);
+      }
+      .wp-score {
+        font-size: 0.82rem;
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+      .wp-score.s {
+        color: var(--safe);
+      }
+      .wp-score.m {
+        color: var(--moderate);
+      }
+      .wp-score.u {
+        color: var(--danger);
+      }
+
+      /* alt routes */
+      .alt-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .alt-item {
+        padding: 10px 12px;
+        border-radius: var(--radius-sm);
+        border: 1.5px solid var(--border);
+        background: #fff;
+        cursor: pointer;
+        transition: all 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .alt-item:hover,
+      .alt-item.active {
+        border-color: var(--india-2);
+        background: #f0f5ff;
+      }
+      .alt-num {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--off-white);
+        border: 1.5px solid var(--border);
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--text-2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .alt-item.active .alt-num {
+        background: var(--india-2);
+        border-color: var(--india-2);
+        color: #fff;
+      }
+      .alt-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .alt-name {
+        font-size: 0.83rem;
+        font-weight: 500;
+      }
+      .alt-sub {
+        font-size: 0.72rem;
+        color: var(--text-3);
+      }
+      .alt-score {
+        font-size: 0.85rem;
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+
+      /* ── MAP ─────────────────────────────────────────────────────────── */
+      .map-area {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+      }
+      #map {
+        width: 100%;
+        height: 100%;
+      }
+
+      /* map controls */
+      .map-legend {
+        position: absolute;
+        bottom: 24px;
+        left: 16px;
+        z-index: 800;
+        background: rgba(255, 255, 255, 0.95);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 10px 14px;
+        box-shadow: var(--shadow);
+        font-size: 0.75rem;
+      }
+      .legend-row {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-bottom: 4px;
+      }
+      .legend-row:last-child {
+        margin-bottom: 0;
+      }
+      .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .legend-line {
+        width: 24px;
+        height: 3px;
+        border-radius: 2px;
+        flex-shrink: 0;
+      }
+
+      /* loading spinner on map */
+      .map-loading {
+        position: absolute;
+        inset: 0;
+        z-index: 700;
+        background: rgba(255, 255, 255, 0.75);
+        backdrop-filter: blur(4px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .map-loading.active {
+        display: flex;
+      }
+      .spin {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: 3px solid var(--border);
+        border-top-color: var(--india-2);
+        animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .map-load-text {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--text-2);
+      }
+
+      /* ── TOOLTIP ──────────────────────────────────────────────────────── */
+      .leaflet-popup-content-wrapper {
+        border-radius: 10px !important;
+        box-shadow: var(--shadow-lg) !important;
+        border: 1px solid var(--border) !important;
+        padding: 0 !important;
+        overflow: hidden;
+      }
+      .leaflet-popup-content {
+        margin: 0 !important;
+      }
+      .leaflet-popup-tip-container {
+        display: none;
+      }
+      .popup-inner {
+        padding: 12px 14px;
+        font-family: var(--font-body);
+        min-width: 200px;
+      }
+      .popup-name {
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 2px;
+      }
+      .popup-city {
+        font-size: 0.75rem;
+        color: var(--text-3);
+        margin-bottom: 8px;
+      }
+      .popup-score-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .popup-score-badge {
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        font-weight: 600;
+      }
+      .popup-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px 10px;
+      }
+      .popup-kv {
+        font-size: 0.75rem;
+        color: var(--text-2);
+      }
+      .popup-kv span {
+        color: var(--text);
+        font-weight: 500;
+      }
+
+      /* ── EMPTY STATE ─────────────────────────────────────────────────── */
+      .empty-state {
+        text-align: center;
+        padding: 32px 20px;
+        border: 1.5px dashed var(--border);
+        border-radius: var(--radius);
+        color: var(--text-3);
+        margin-top: 8px;
+      }
+      .empty-icon {
+        font-size: 2rem;
+        margin-bottom: 8px;
+        opacity: 0.35;
+      }
+      .empty-text {
+        font-size: 0.85rem;
+      }
+
+      /* ── MOBILE ─────────────────────────────────────────────────────── */
+      @media (max-width: 768px) {
+        .app-layout {
+          flex-direction: column;
+          height: auto;
+        }
+        .sidebar {
+          width: 100%;
+          min-width: unset;
+          border-right: none;
+          border-bottom: 1px solid var(--border);
+        }
+        .map-area {
+          height: 380px;
+          flex: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ── TOP BAR ─────────────────────────────────────────────────────── -->
+    <header class="topbar">
+      <a class="logo" href="#">
+        <div class="logo-icon"><i class="fa-solid fa-shield-halved"></i></div>
+        SafeRoute <em>India</em>
+      </a>
+    </header>
+
+    <!-- ── APP LAYOUT ──────────────────────────────────────────────────── -->
+    <div class="app-layout">
+      <!-- SIDEBAR -->
+      <aside class="sidebar">
+        <div class="sidebar-scroll">
+          <!-- SEARCH PANEL -->
+          <div class="search-panel">
+            <h1 class="panel-title">
+              Find the Safest<br /><em>Route in India</em>
+            </h1>
+
+            <div class="loc-inputs">
+              <div class="loc-connector"></div>
+
+              <!-- Source -->
+              <div class="loc-row mb-2">
+                <div class="loc-dot origin" style="margin-right: 8px">
+                  <i class="fa-solid fa-circle-dot"></i>
+                </div>
+                <div class="loc-input-wrap" style="position: relative">
+                  <input
+                    id="srcInput"
+                    class="loc-input"
+                    type="text"
+                    placeholder="From — e.g. Connaught Place, Delhi"
+                    autocomplete="off"
+                  />
+                  <button
+                    class="clear-btn"
+                    id="srcClear"
+                    onclick="clearInput('src')"
+                  >
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                  <div class="autocomplete-dropdown" id="srcDropdown"></div>
+                </div>
+              </div>
+
+              <!-- Destination -->
+              <div class="loc-row">
+                <div class="loc-dot dest" style="margin-right: 8px">
+                  <i class="fa-solid fa-location-dot"></i>
+                </div>
+                <div class="loc-input-wrap" style="position: relative">
+                  <input
+                    id="dstInput"
+                    class="loc-input"
+                    type="text"
+                    placeholder="To — e.g. Koramangala, Bengaluru"
+                    autocomplete="off"
+                  />
+                  <button
+                    class="clear-btn"
+                    id="dstClear"
+                    onclick="clearInput('dst')"
+                  >
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                  <div class="autocomplete-dropdown" id="dstDropdown"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="time-toggle">
+              <button
+                class="time-btn active"
+                id="btn-day"
+                onclick="setTime('day')"
+              >
+                <i class="fa-solid fa-sun"></i> Daytime
+              </button>
+              <button
+                class="time-btn"
+                id="btn-night"
+                onclick="setTime('night')"
+              >
+                <i class="fa-solid fa-moon"></i> Night
+              </button>
+            </div>
+
+            <button class="btn-route" id="findBtn" onclick="findRoute()">
+              <i class="fa-solid fa-route"></i> Find Safe Route
+            </button>
+          </div>
+          <!-- /search-panel -->
+
+          <hr class="divider" />
+
+          <!-- RESULTS PANEL -->
+          <div id="results-panel">
+            <!-- Score Header -->
+            <div class="score-header" id="scoreHeader">
+              <div class="score-circle" id="scoreCircle">
+                <div class="score-num" id="scoreNum">—</div>
+                <div class="score-pct">/ 100</div>
+              </div>
+              <div class="score-info">
+                <div class="score-label" id="scoreLabelText">Calculating…</div>
+                <div class="score-sub" id="scoreSubText"></div>
+              </div>
+            </div>
+
+            <!-- Breakdown -->
+            <div class="sec-label">Safety Breakdown</div>
+            <div class="breakdown-grid" id="breakdownGrid">
+              <div class="breakdown-cell">
+                <div class="bc-label">Crime Safety</div>
+                <div class="bc-bar">
+                  <div
+                    class="bc-fill"
+                    id="b-crime"
+                    style="width: 0; background: #16a34a"
+                  ></div>
+                </div>
+                <div class="bc-val" id="v-crime">—</div>
+              </div>
+              <div class="breakdown-cell">
+                <div class="bc-label">Lighting</div>
+                <div class="bc-bar">
+                  <div
+                    class="bc-fill"
+                    id="b-light"
+                    style="width: 0; background: #d97706"
+                  ></div>
+                </div>
+                <div class="bc-val" id="v-light">—</div>
+              </div>
+              <div class="breakdown-cell">
+                <div class="bc-label">Crowd Density</div>
+                <div class="bc-bar">
+                  <div
+                    class="bc-fill"
+                    id="b-crowd"
+                    style="width: 0; background: #1a56a0"
+                  ></div>
+                </div>
+                <div class="bc-val" id="v-crowd">—</div>
+              </div>
+              <div class="breakdown-cell">
+                <div class="bc-label">Public Sentiment</div>
+                <div class="bc-bar">
+                  <div
+                    class="bc-fill"
+                    id="b-sent"
+                    style="width: 0; background: #9333ea"
+                  ></div>
+                </div>
+                <div class="bc-val" id="v-sent">—</div>
+              </div>
+            </div>
+
+            <!-- Waypoints -->
+            <div class="sec-label">Route Waypoints</div>
+            <div class="wp-list" id="wpList"></div>
+
+            <!-- Alternatives -->
+            <div class="sec-label">Alternative Routes</div>
+            <div class="alt-list" id="altList"></div>
+          </div>
+          <!-- /results-panel -->
+
+          <!-- Empty State -->
+          <div id="emptyState" class="empty-state">
+            <div class="empty-icon">
+              <i class="fa-solid fa-map-location-dot"></i>
+            </div>
+            <div class="empty-text">
+              Enter source &amp; destination above<br />to find the safest route
+            </div>
+          </div>
+        </div>
+        <!-- /sidebar-scroll -->
+      </aside>
+      <!-- /sidebar -->
+
+      <!-- MAP -->
+      <div class="map-area">
+        <div id="map"></div>
+        <div class="map-loading" id="mapLoader">
+          <div class="spin"></div>
+          <div class="map-load-text" id="mapLoadText">
+            Analysing route safety…
+          </div>
+        </div>
+        <div class="map-legend" id="mapLegend" style="display: none">
+          <div
+            style="
+              font-size: 0.72rem;
+              font-weight: 600;
+              color: var(--text-2);
+              margin-bottom: 6px;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            "
+          >
+            Legend
+          </div>
+          <div class="legend-row">
+            <div class="legend-line" style="background: #16a34a"></div>
+            Safe zone
+          </div>
+          <div class="legend-row">
+            <div class="legend-line" style="background: #d97706"></div>
+            Moderate risk
+          </div>
+          <div class="legend-row">
+            <div class="legend-line" style="background: #dc2626"></div>
+            High risk
+          </div>
+          <div class="legend-row">
+            <div
+              class="legend-dot"
+              style="background: #ef4444; opacity: 0.5"
+            ></div>
+            Crime hotspot
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- /app-layout -->
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      /* ══════════════════════════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════════════════════════ */
+      let selectedTime = "day";
+      let map = null;
+      let routeLayers = [];
+      let heatLayer = null;
+      let markerLayer = null;
+      let allLocations = [];
+      let currentRouteData = null;
+      let debounceTimers = {};
+
+      /* ══════════════════════════════════════════════════════════════════
+   INIT MAP
+══════════════════════════════════════════════════════════════════ */
+      function initMap() {
+        map = L.map("map", {
+          zoomControl: true,
+          scrollWheelZoom: true,
+        }).setView([20.5937, 78.9629], 5); // India centre
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "© OpenStreetMap contributors",
+          maxZoom: 18,
+        }).addTo(map);
+        markerLayer = L.layerGroup().addTo(map);
+
+        // Load and plot all location dots on startup
+        fetch("/api/all_locations")
+          .then((r) => r.json())
+          .then((locs) => {
+            allLocations = locs;
+            locs.forEach((loc) => {
+              const c = loc.safety_label === 1 ? "#16a34a" : "#dc2626";
+              const m = L.circleMarker([loc.lat, loc.lng], {
+                radius: 4,
+                fillColor: c,
+                color: "#fff",
+                weight: 1,
+                fillOpacity: 0.7,
+                opacity: 0.8,
+              });
+              m.bindTooltip(
+                `<b>${loc.name}</b><br/>${loc.city} · ESS ${Math.round(loc.ess * 100)}%`,
+                { direction: "top", className: "", offset: [0, -4] },
+              );
+              m.addTo(markerLayer);
+            });
+          });
+      }
+
+      /* ══════════════════════════════════════════════════════════════════
+   AUTOCOMPLETE
+══════════════════════════════════════════════════════════════════ */
+      function setupAutocomplete(inputId, dropdownId, clearBtnId) {
+        const input = document.getElementById(inputId);
+        const dropdown = document.getElementById(dropdownId);
+        const clearBtn = document.getElementById(clearBtnId);
+
+        input.addEventListener("input", () => {
+          const q = input.value.trim();
+          clearBtn.classList.toggle("visible", q.length > 0);
+
+          clearTimeout(debounceTimers[inputId]);
+          if (q.length < 2) {
+            dropdown.innerHTML = "";
+            dropdown.classList.remove("open");
+            return;
+          }
+
+          debounceTimers[inputId] = setTimeout(() => {
+            fetch(`/api/search?q=${encodeURIComponent(q)}`)
+              .then((r) => r.json())
+              .then((results) => {
+                if (!results.length) {
+                  dropdown.innerHTML = "";
+                  dropdown.classList.remove("open");
+                  return;
+                }
+                dropdown.innerHTML = results
+                  .map(
+                    (r, i) => `
+            <div class="autocomplete-item" data-name="${r.name}" data-city="${r.city}"
+                 data-lat="${r.lat}" data-lng="${r.lng}" tabindex="0">
+              <span class="ac-icon"><i class="fa-solid fa-location-dot"></i></span>
+              <span class="ac-name">${r.name}</span>
+              <span class="ac-city">${r.city}</span>
+            </div>`,
+                  )
+                  .join("");
+                dropdown.classList.add("open");
+                dropdown
+                  .querySelectorAll(".autocomplete-item")
+                  .forEach((el) => {
+                    el.addEventListener("click", () => {
+                      input.value = `${el.dataset.name}, ${el.dataset.city}`;
+                      input.dataset.selectedName = el.dataset.name;
+                      input.dataset.lat = el.dataset.lat;
+                      input.dataset.lng = el.dataset.lng;
+                      dropdown.classList.remove("open");
+                      dropdown.innerHTML = "";
+                      // Pan map to selected location
+                      if (map)
+                        map.setView([+el.dataset.lat, +el.dataset.lng], 13);
+                    });
+                  });
+              });
+          }, 220);
+        });
+
+        // Close on outside click
+        document.addEventListener("click", (e) => {
+          if (!dropdown.contains(e.target) && e.target !== input)
+            dropdown.classList.remove("open");
+        });
+
+        input.addEventListener("keydown", (e) => {
+          const items = dropdown.querySelectorAll(".autocomplete-item");
+          const active = dropdown.querySelector(".active");
+          if (!items.length) return;
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            const next = active
+              ? active.nextElementSibling || items[0]
+              : items[0];
+            active && active.classList.remove("active");
+            next.classList.add("active");
+            next.scrollIntoView({ block: "nearest" });
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            const prev = active
+              ? active.previousElementSibling || items[items.length - 1]
+              : items[items.length - 1];
+            active && active.classList.remove("active");
+            prev.classList.add("active");
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            const a = dropdown.querySelector(".active") || items[0];
+            if (a) a.click();
+          } else if (e.key === "Escape") {
+            dropdown.classList.remove("open");
+          }
+        });
+      }
+
+      function clearInput(which) {
+        const id = which === "src" ? "srcInput" : "dstInput";
+        const inp = document.getElementById(id);
+        inp.value = "";
+        delete inp.dataset.selectedName;
+        document.getElementById(id + "Clear").classList.remove("visible");
+        document.getElementById(id + "Dropdown").classList.remove("open");
+      }
+
+      /* ══════════════════════════════════════════════════════════════════
+   TIME
+══════════════════════════════════════════════════════════════════ */
+      function setTime(t) {
+        selectedTime = t;
+        document
+          .getElementById("btn-day")
+          .classList.toggle("active", t === "day");
+        document
+          .getElementById("btn-night")
+          .classList.toggle("active", t === "night");
+      }
+
+      /* ══════════════════════════════════════════════════════════════════
+   FIND ROUTE
+══════════════════════════════════════════════════════════════════ */
+      async function findRoute() {
+        const srcInput = document.getElementById("srcInput");
+        const dstInput = document.getElementById("dstInput");
+        const src = (srcInput.dataset.selectedName || srcInput.value).trim();
+        const dst = (dstInput.dataset.selectedName || dstInput.value).trim();
+
+        if (!src || !dst) {
+          alert("Please enter both source and destination.");
+          return;
+        }
+
+        const btn = document.getElementById("findBtn");
+        btn.disabled = true;
+        btn.innerHTML =
+          '<div class="spin" style="width:18px;height:18px;border-width:2px;margin:0 auto"></div>';
+
+        showMapLoader("Analysing route safety…");
+
+        const msgs = [
+          "Clustering crime hotspots…",
+          "Computing safety weights…",
+          "Running Dijkstra…",
+          "Scoring waypoints…",
+        ];
+        let mi = 0;
+        const mt = setInterval(() => {
+          mi = (mi + 1) % msgs.length;
+          document.getElementById("mapLoadText").textContent = msgs[mi];
+        }, 700);
+
+        try {
+          const res = await fetch("/predict", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source: src,
+              destination: dst,
+              time: selectedTime,
+            }),
+          });
+          const data = await res.json();
+          currentRouteData = data;
+
+          clearInterval(mt);
+          hideMapLoader();
+          renderResults(data);
+        } catch (err) {
+          clearInterval(mt);
+          hideMapLoader();
+          alert(
+            "Error connecting to Flask server.\nMake sure it is running on port 5000.\n\n" +
+              err.message,
+          );
+        }
+
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-route"></i> Find Safe Route';
+      }
+
+      /* ══════════════════════════════════════════════════════════════════
+   RENDER RESULTS
+══════════════════════════════════════════════════════════════════ */
+      function renderResults(data) {
+        const route = data.route,
+          bd = data.breakdown;
+        const pct = Math.round(data.avg_ess * 100);
+        const tier = pct >= 60 ? "safe" : pct >= 40 ? "moderate" : "unsafe";
+
+        // Show results, hide empty state
+        document.getElementById("emptyState").style.display = "none";
+        const rp = document.getElementById("results-panel");
+        rp.classList.add("visible");
+        document.getElementById("mapLegend").style.display = "block";
+
+        // ── Score header ──
+        const sh = document.getElementById("scoreHeader");
+        const sc = document.getElementById("scoreCircle");
+        sh.className = "score-header " + tier;
+        sc.className = "score-circle " + tier;
+        document.getElementById("scoreNum").textContent = pct;
+        document.getElementById("scoreLabelText").textContent =
+          tier === "safe"
+            ? "Route is Safe"
+            : tier === "moderate"
+              ? "Moderate Risk"
+              : "High Risk";
+        document.getElementById("scoreSubText").textContent =
+          `${route.length} waypoints · ${data.source} → ${data.destination}`;
+
+        // ── Breakdown bars ──
+        setTimeout(() => {
+          setBar("b-crime", "v-crime", bd.crime_safety);
+          setBar("b-light", "v-light", bd.lighting);
+          setBar("b-crowd", "v-crowd", bd.crowd_density);
+          setBar("b-sent", "v-sent", bd.sentiment);
+        }, 100);
+
+        // ── Waypoints ──
+        const wpList = document.getElementById("wpList");
+        wpList.innerHTML = route
+          .map((w, i) => {
+            const p = Math.round(w.ess * 100);
+            const t = p >= 60 ? "s" : p >= 40 ? "m" : "u";
+            const label = p >= 60 ? "Safe" : p >= 40 ? "Moderate" : "Risky";
+            return `
+    <div class="wp-item" data-idx="${i}" onclick="highlightWaypoint(${i})" title="${w.name}, ${w.city}">
+      <div class="wp-dot ${t}"></div>
+      <div class="wp-text">
+        <div class="wp-name">${w.name}</div>
+        <div class="wp-city">${w.city}, ${w.state}</div>
+      </div>
+      <div class="wp-score ${t}">${p}%</div>
+    </div>`;
+          })
+          .join("");
+
+        // ── Alternative routes ──
+        const altList = document.getElementById("altList");
+        altList.innerHTML =
+          `
+    <div class="alt-item active" onclick="selectAlt(-1, this)">
+      <div class="alt-num">1</div>
+      <div class="alt-info">
+        <div class="alt-name">Recommended Route</div>
+        <div class="alt-sub">${route.length} stops · Safest path</div>
+      </div>
+      <div class="alt-score" style="color:${pct >= 60 ? "var(--safe)" : pct >= 40 ? "var(--moderate)" : "var(--danger)"}">${pct}%</div>
+    </div>` +
+          (data.alternative_routes || [])
+            .map((alt, i) => {
+              const ap = Math.round(alt.avg_ess * 100);
+              const ac =
+                ap >= 60
+                  ? "var(--safe)"
+                  : ap >= 40
+                    ? "var(--moderate)"
+                    : "var(--danger)";
+              return `
+    <div class="alt-item" onclick="selectAlt(${i}, this)">
+      <div class="alt-num">${i + 2}</div>
+      <div class="alt-info">
+        <div class="alt-name">Alternative ${i + 1}</div>
+        <div class="alt-sub">${alt.path.length} stops</div>
+      </div>
+      <div class="alt-score" style="color:${ac}">${ap}%</div>
+    </div>`;
+            })
+            .join("");
+
+        // ── Draw map ──
+        drawRoute(route);
+        loadHeatmap();
+      }
+
+      /* ══════════════════════════════════════════════════════════════════
+   MAP DRAWING
+══════════════════════════════════════════════════════════════════ */
+      function drawRoute(route) {
+        if (!map) return;
+        // Clear previous route layers
+        routeLayers.forEach((l) => map.removeLayer(l));
+        routeLayers = [];
+        markerLayer.clearLayers();
+
+        const latlngs = route.map((w) => [w.lat, w.lng]);
+
+        // Coloured polyline segments
+        for (let i = 0; i < latlngs.length - 1; i++) {
+          const score = route[i].ess;
+          const color =
+            score >= 0.6 ? "#16a34a" : score >= 0.4 ? "#d97706" : "#dc2626";
+          const line = L.polyline([latlngs[i], latlngs[i + 1]], {
+            color,
+            weight: 5,
+            opacity: 0.88,
+            lineCap: "round",
+            lineJoin: "round",
+          }).addTo(map);
+          routeLayers.push(line);
+        }
+
+        // Markers
+        route.forEach((w, i) => {
+          const score = w.ess;
+          const color =
+            score >= 0.6 ? "#16a34a" : score >= 0.4 ? "#d97706" : "#dc2626";
+          const tier =
+            score >= 0.6 ? "safe" : score >= 0.4 ? "moderate" : "unsafe";
+          let marker;
+          if (i === 0) {
+            marker = L.marker([w.lat, w.lng], {
+              icon: makeIcon("A", "#1a56a0"),
+            });
+          } else if (i === route.length - 1) {
+            marker = L.marker([w.lat, w.lng], {
+              icon: makeIcon("B", "#ff6b35"),
+            });
+          } else {
+            marker = L.circleMarker([w.lat, w.lng], {
+              radius: 7,
+              fillColor: color,
+              color: "#fff",
+              weight: 2,
+              fillOpacity: 0.95,
+            });
+          }
+          marker.bindPopup(makePopup(w, tier), { maxWidth: 250 });
+          marker.addTo(markerLayer);
+        });
+
+        if (latlngs.length)
+          map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] });
+      }
+
+      function makeIcon(letter, color) {
+        return L.divIcon({
+          html: `<div style="width:28px;height:28px;border-radius:50%;background:${color};
+          border:2px solid #fff;display:flex;align-items:center;justify-content:center;
+          font-family:Epilogue,sans-serif;font-size:.72rem;font-weight:700;color:#fff;
+          box-shadow:0 2px 8px rgba(0,0,0,.25)">${letter}</div>`,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+          className: "",
+        });
+      }
+
+      function makePopup(w, tier) {
+        const pct = Math.round(w.ess * 100);
+        const bg =
+          tier === "safe"
+            ? "#f0fdf4"
+            : tier === "moderate"
+              ? "#fffbeb"
+              : "#fef2f2";
+        const fg =
+          tier === "safe"
+            ? "#16a34a"
+            : tier === "moderate"
+              ? "#d97706"
+              : "#dc2626";
+        return `<div class="popup-inner">
+    <div class="popup-name">${w.name}</div>
+    <div class="popup-city">${w.city}, ${w.state}</div>
+    <div class="popup-score-row">
+      <div class="popup-score-badge" style="background:${bg};color:${fg};border:1px solid ${fg}33">
+        ${pct}% · ${w.prediction}
+      </div>
+    </div>
+    <div class="popup-grid">
+      <div class="popup-kv">Crime <span>${Math.round(w.crime_rate * 100)}%</span></div>
+      <div class="popup-kv">Lighting <span>${w.lighting ? "Yes" : "No"}</span></div>
+      <div class="popup-kv">Crowd <span>${Math.round(w.crowd_density * 100)}%</span></div>
+      <div class="popup-kv">Sentiment <span>${Math.round(w.sentiment * 100)}%</span></div>
+    </div>
+  </div>`;
+      }
+
+      function loadHeatmap() {
+        fetch("/api/heatmap")
+          .then((r) => r.json())
+          .then((data) => {
+            if (heatLayer) {
+              map.removeLayer(heatLayer);
+              heatLayer = null;
+            }
+            const pts = data.hotspots.map((h) => [h.lat, h.lng, h.intensity]);
+            heatLayer = L.heatLayer(pts, {
+              radius: 35,
+              blur: 25,
+              maxZoom: 17,
+              gradient: {
+                0.2: "#fef3c7",
+                0.5: "#fca5a5",
+                0.8: "#ef4444",
+                1.0: "#7f1d1d",
+              },
+            }).addTo(map);
+          });
+      }
+
+      /* ══════════════════════════════════════════════════════════════════
+   INTERACTIONS
+══════════════════════════════════════════════════════════════════ */
+      function highlightWaypoint(idx) {
+        document
+          .querySelectorAll(".wp-item")
+          .forEach((el, i) => el.classList.toggle("highlighted", i === idx));
+        if (currentRouteData && map) {
+          const w = currentRouteData.route[idx];
+          map.setView([w.lat, w.lng], 15);
+        }
+      }
+
+      function selectAlt(idx, el) {
+        document
+          .querySelectorAll(".alt-item")
+          .forEach((a) => a.classList.remove("active"));
+        el.classList.add("active");
+        if (!currentRouteData) return;
+        if (idx === -1) {
+          drawRoute(currentRouteData.route);
+        } else {
+          const alt = currentRouteData.alternative_routes[idx];
+          if (alt)
+            drawRoute(
+              alt.path.map((w) => ({
+                ...w,
+                ess: w.ess,
+                prediction: "—",
+                crime_rate: 0,
+                crowd_density: 0,
+                sentiment: 0,
+                lighting: 1,
+              })),
+            );
+        }
+      }
+
+      /* ══════════════════════════════════════════════════════════════════
+   HELPERS
+══════════════════════════════════════════════════════════════════ */
+      function setBar(barId, valId, value) {
+        const pct = Math.round(value * 100);
+        document.getElementById(barId).style.width = pct + "%";
+        document.getElementById(valId).textContent = pct + "%";
+      }
+      function showMapLoader(msg) {
+        document.getElementById("mapLoadText").textContent = msg || "Loading…";
+        document.getElementById("mapLoader").classList.add("active");
+      }
+      function hideMapLoader() {
+        document.getElementById("mapLoader").classList.remove("active");
+      }
+
+      /* ══════════════════════════════════════════════════════════════════
+   BOOT
+══════════════════════════════════════════════════════════════════ */
+      document.addEventListener("DOMContentLoaded", () => {
+        initMap();
+        setupAutocomplete("srcInput", "srcDropdown", "srcClear");
+        setupAutocomplete("dstInput", "dstDropdown", "dstClear");
+        // Show data note after a moment
+        setTimeout(
+          () => (document.getElementById("dataNote").style.display = "block"),
+          800,
+        );
+      });
+    </script>
+  </body>
+</html>
